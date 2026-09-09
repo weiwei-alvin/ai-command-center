@@ -217,8 +217,14 @@ function TeamsSection({ teams, onChange }: TeamsSectionProps) {
     onChange(teams.filter((t) => t.id !== team.id));
   };
 
+  // Normalize team names for duplicate comparison: trim + lowercase BOTH sides,
+  // so "Default Team " (trailing space) still matches "Default Team".
+  const normalizeTeamName = (value: string) => value.trim().toLowerCase();
+
   const duplicateName = (name: string) =>
-    teams.some((t) => t.name.toLowerCase() === name.toLowerCase().trim() && t.id !== editingId);
+    teams.some(
+      (t) => normalizeTeamName(t.name) === normalizeTeamName(name) && t.id !== editingId
+    );
 
   return (
     <section className="settings-section">

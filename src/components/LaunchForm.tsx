@@ -1,16 +1,23 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { LaunchFormData } from '../types';
+import type { LaunchFormData, Team } from '../types';
 
 interface LaunchFormProps {
   onLaunch: (data: LaunchFormData) => void;
   launching: boolean;
   error: string | null;
+  teams: Team[];
 }
 
-export function LaunchForm({ onLaunch, launching, error }: LaunchFormProps) {
+export function LaunchForm({ onLaunch, launching, error, teams }: LaunchFormProps) {
   const [projectFolder, setProjectFolder] = useState('');
   const [task, setTask] = useState('');
+  const [selectedTeam, setSelectedTeam] = useState<string>('');
+  const effectiveTeamId = teams.some((t) => t.id === selectedTeam)
+    ? selectedTeam
+    : (teams[0]?.id ?? 'default');
+  const effectiveTeamName =
+    teams.find((t) => t.id === effectiveTeamId)?.name ?? 'default';
 
   const handleFolderPick = useCallback(async () => {
     try {
@@ -32,13 +39,13 @@ export function LaunchForm({ onLaunch, launching, error }: LaunchFormProps) {
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!projectFolder.trim() || !task.trim()) return;
-    
+
     onLaunch({
       projectFolder: projectFolder.trim(),
-      team: 'default', // Hardcoded for V0.1
+      team: effectiveTeamName,
       task: task.trim(),
     });
-  }, [projectFolder, task, onLaunch]);
+  }, [projectFolder, task, effectiveTeamName, onLaunch]);
 
   return (
     <form className="launch-form" onSubmit={handleSubmit}>
@@ -69,10 +76,16 @@ export function LaunchForm({ onLaunch, launching, error }: LaunchFormProps) {
         <label htmlFor="team">Team</label>
         <select
           id="team"
-          value="default"
+          value={effectiveTeamId}
+          onChange={(e) => setSelectedTeam(e.target.value)}
           disabled={launching}
         >
-          <option value="default">Default Team (Supervisor + Builder + Reviewer)</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
+              {team.description ? ` (${team.description})` : ''}
+            </option>
+          ))}
         </select>
       </div>
 

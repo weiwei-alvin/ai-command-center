@@ -165,6 +165,7 @@ function App() {
           <Dashboard
             sessions={sessions}
             onSessionSelect={handleSessionSelect}
+            teams={settings.teams}
             launchFormProps={{
               onLaunch: handleLaunch,
               launching,
