@@ -66,3 +66,20 @@ export interface CAOConfig {
   baseUrl: string;
   wsUrl: string;
 }
+
+export interface AppPreferences {
+  /** Interval in milliseconds for polling CAO health/session status. */
+  pollIntervalMs: number;
+  /** Whether to auto-refresh the session list while connected. */
+  autoRefreshSessions: boolean;
+  /** Whether to open a session view immediately after launching a task. */
+  openSessionAfterLaunch: boolean;
+  /** UI theme name. */
+  theme: 'dark' | 'light';
+}
+
+export interface Settings {
+  caoConfig: CAOConfig;
+  teams: Team[];
+  preferences: AppPreferences;
+}
