@@ -1,9 +1,10 @@
 import { LaunchForm } from './LaunchForm';
-import type { SessionSummary } from '../types';
+import type { SessionSummary, Team } from '../types';
 
 interface DashboardProps {
   sessions: SessionSummary[];
   onSessionSelect: (session: SessionSummary) => void;
+  teams: Team[];
   launchFormProps: {
     onLaunch: (data: { projectFolder: string; team: string; task: string }) => void;
     launching: boolean;
@@ -38,13 +39,14 @@ function getStatusLabel(state: string): string {
 export function Dashboard({
   sessions,
   onSessionSelect,
+  teams,
   launchFormProps,
 }: DashboardProps) {
   return (
     <div className="dashboard">
       <div className="dashboard-section">
         <h2>Launch Task</h2>
-        <LaunchForm {...launchFormProps} />
+        <LaunchForm {...launchFormProps} teams={teams} />
       </div>
 
       <div className="dashboard-section">
