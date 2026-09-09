@@ -66,3 +66,16 @@ export interface CAOConfig {
   baseUrl: string;
   wsUrl: string;
 }
+
+/**
+ * Metadata persisted by the Tauri backend (session-store.json) so
+ * sessions can be recovered after an app restart.
+ */
+export interface StoredSessionMetadata {
+  sessionId: string;
+  team: string;
+  task: string;
+  projectFolder: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,9 +1,12 @@
 import { LaunchForm } from './LaunchForm';
-import type { SessionSummary } from '../types';
+import type { SessionSummary, StoredSessionMetadata } from '../types';
 
 interface DashboardProps {
   sessions: SessionSummary[];
   onSessionSelect: (session: SessionSummary) => void;
+  sessionHistory: StoredSessionMetadata[];
+  onResumeSession: (sessionId: string) => void;
+  resuming: boolean;
   launchFormProps: {
     onLaunch: (data: { projectFolder: string; team: string; task: string }) => void;
     launching: boolean;
@@ -38,6 +41,9 @@ function getStatusLabel(state: string): string {
 export function Dashboard({
   sessions,
   onSessionSelect,
+  sessionHistory,
+  onResumeSession,
+  resuming,
   launchFormProps,
 }: DashboardProps) {
   return (
@@ -95,6 +101,39 @@ export function Dashboard({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {sessionHistory.length > 0 && (
+          <div className="session-history" style={{ marginTop: '24px' }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Recovered Sessions</h3>
+            <p style={{ fontSize: '0.8rem', color: '#808080', marginBottom: '8px' }}>
+              Sessions restored from the local store. Resume to re-attach if the session is still running.
+            </p>
+            <div className="session-list">
+              {sessionHistory.map((meta) => (
+                <div key={meta.sessionId} className="session-item">
+                  <div className="session-info">
+                    <div className="session-name">{meta.task || meta.sessionId}</div>
+                    <div className="session-meta">
+                      <span>{meta.team || 'Unknown team'}</span>
+                      <span>{meta.projectFolder || 'No folder'}</span>
+                      <span>{formatDate(meta.updatedAt)}</span>
+                    </div>
+                  </div>
+                  <div className="session-actions">
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                      onClick={() => onResumeSession(meta.sessionId)}
+                      disabled={resuming}
+                    >
+                      {resuming ? 'Resuming…' : 'Resume'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
