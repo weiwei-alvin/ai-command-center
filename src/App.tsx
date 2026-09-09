@@ -3,7 +3,7 @@ import { SessionView } from './components/SessionView';
 import { Dashboard } from './components/Dashboard';
 import { ConnectionIndicator } from './components/ConnectionIndicator';
 import { getCAOAdapter, resetCAOAdapter } from './lib/cao/adapter';
-import type { SessionSummary, Team, ConnectionState } from './types';
+import type { SessionSummary, Team, ConnectionState, CAOHealth } from './types';
 import './App.css';
 
 const DEFAULT_TEAM: Team = {
@@ -14,8 +14,20 @@ const DEFAULT_TEAM: Team = {
   workerProfiles: ['developer', 'reviewer'],
 };
 
+const INITIAL_HEALTH: CAOHealth = {
+  healthy: false,
+  status: 'connecting',
+  version: null,
+  service: null,
+  terminalBackend: null,
+  components: [],
+  latencyMs: null,
+  checkedAt: new Date().toISOString(),
+};
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+  const [caoHealth, setCAOHealth] = useState<CAOHealth>(INITIAL_HEALTH);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<SessionSummary | null>(null);
   const [view, setView] = useState<'dashboard' | 'session'>('dashboard');
@@ -27,9 +39,10 @@ function App() {
   // Check CAO connection on mount and periodically
   useEffect(() => {
     const checkConnection = async () => {
-      const { healthy } = await adapter.checkHealth();
-      setConnectionState(healthy ? 'connected' : 'disconnected');
-      if (healthy) {
+      const health = await adapter.checkHealth();
+      setCAOHealth(health);
+      setConnectionState(health.healthy ? 'connected' : 'disconnected');
+      if (health.healthy) {
         loadSessions();
       }
     };
@@ -37,6 +50,11 @@ function App() {
     checkConnection();
     const interval = setInterval(checkConnection, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  const handleCAOHealthChange = useCallback((health: CAOHealth) => {
+    setCAOHealth(health);
+    setConnectionState(health.healthy ? 'connected' : 'disconnected');
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -101,7 +119,11 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>AI Command Center</h1>
-        <ConnectionIndicator state={connectionState} />
+        <ConnectionIndicator
+          state={connectionState}
+          version={caoHealth.version}
+          latencyMs={caoHealth.latencyMs}
+        />
       </header>
 
       <main className="app-main">
@@ -109,6 +131,8 @@ function App() {
           <Dashboard
             sessions={sessions}
             onSessionSelect={handleSessionSelect}
+            caoHealth={caoHealth}
+            onCAOHealthChange={handleCAOHealthChange}
             launchFormProps={{
               onLaunch: handleLaunch,
               launching,

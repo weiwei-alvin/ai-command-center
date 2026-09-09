@@ -66,3 +66,37 @@ export interface CAOConfig {
   baseUrl: string;
   wsUrl: string;
 }
+
+/**
+ * Health of a single CAO backend component.
+ */
+export interface CAOComponentHealth {
+  name: string;
+  status: ConnectionState;
+  raw?: string;
+}
+
+/**
+ * Aggregated CAO server health snapshot.
+ */
+export interface CAOHealth {
+  healthy: boolean;
+  status: ConnectionState;
+  version: string | null;
+  service: string | null;
+  terminalBackend: string | null;
+  components: CAOComponentHealth[];
+  latencyMs: number | null;
+  checkedAt: string;
+}
+
+/**
+ * CAO process lifecycle actions.
+ */
+export type CAOProcessAction = 'start' | 'stop';
+
+export interface CAOProcessResult {
+  success: boolean;
+  action: CAOProcessAction;
+  message: string;
+}
