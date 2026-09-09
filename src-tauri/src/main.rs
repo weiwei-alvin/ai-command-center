@@ -3,14 +3,12 @@
     windows_subsystem = "windows"
 )]
 
-use std::sync::Mutex;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{
-    plugin::{Builder, TauriPlugin},
-    Manager, Runtime,
-};
-use tauri_plugin_shell::process::{Command as ShellCommand, CommandChild};
+use tauri::{Manager, RunEvent};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -37,7 +35,7 @@ struct CAOProcessStatus {
 
 /// Shared handle to the running CAO process, if any.
 struct CAOProcess {
-    child: Mutex<Option<CommandChild>>,
+    child: Mutex<Option<Child>>,
 }
 
 impl CAOProcess {
@@ -46,37 +44,108 @@ impl CAOProcess {
             child: Mutex::new(None),
         }
     }
+
+    /// Kill the managed child, if any. Returns a description of what happened.
+    fn kill_managed(&self) -> Result<bool, String> {
+        let child = self
+            .child
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {}", e))?
+            .take();
+        match child {
+            Some(mut child) => {
+                child
+                    .kill()
+                    .map_err(|e| format!("Failed to stop CAO process: {}", e))?;
+                // Reap the child so we don't leave a zombie entry.
+                let _ = child.wait();
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
 }
 
-fn cao_executable() -> Option<String> {
-    // Allow overriding via CAO_BIN; otherwise rely on `cao` being on PATH.
+/// Resolve the CAO executable to spawn.
+///
+/// The binary is expected to be the CAO CLI on PATH, or an explicit path
+/// provided via the `CAO_BIN` environment variable (e.g. `C:\bin\cao.exe`).
+/// The path is passed directly to the OS process spawner — no shell is
+/// involved, so shell metacharacters cannot be injected. Operators are
+/// responsible for ensuring `CAO_BIN` points at a trusted build of CAO.
+fn cao_executable() -> String {
     std::env::var("CAO_BIN")
         .ok()
-        .or_else(|| Some("cao".to_string()))
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "cao".to_string())
+}
+
+/// Background thread that watches the managed child. When the process exits
+/// on its own (crash, external kill), the slot is cleared so the app can
+/// start/manage CAO again instead of holding a stale handle forever.
+fn watch_child(process: Arc<CAOProcess>) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(1000));
+        let Ok(mut guard) = process.child.lock() else {
+            break;
+        };
+        match guard.as_mut() {
+            None => break, // slot already empty; nothing to watch
+            Some(child) => match child.try_wait() {
+                Ok(Some(_)) => {
+                    // Process exited; clear the stale handle.
+                    *guard = None;
+                    break;
+                }
+                Ok(None) => { /* still running */ }
+                Err(_) => {
+                    // Cannot query the process; treat it as gone.
+                    *guard = None;
+                    break;
+                }
+            },
+        }
+    });
 }
 
 #[tauri::command]
-async fn cao_start(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResult, String> {
+async fn cao_start(
+    state: tauri::State<'_, Arc<CAOProcess>>,
+) -> Result<CAOProcessResult, String> {
     {
         let guard = state.child.lock().map_err(|e| e.to_string())?;
-        if guard.is_some() {
-            return Ok(CAOProcessResult {
-                success: true,
-                action: "start".to_string(),
-                message: "CAO is already running".to_string(),
-            });
+        if let Some(child) = guard.as_mut() {
+            // Verify the tracked child is still alive so a crashed process
+            // does not masquerade as "already running".
+            match child.try_wait() {
+                Ok(None) => {
+                    return Ok(CAOProcessResult {
+                        success: true,
+                        action: "start".to_string(),
+                        message: "CAO is already running".to_string(),
+                    });
+                }
+                _ => {
+                    // Exited or unknown state: clear the stale handle.
+                    *guard = None;
+                }
+            }
         }
     }
 
-    let bin = cao_executable().ok_or_else(|| "CAO executable not configured".to_string())?;
+    let bin = cao_executable();
 
-    let child = ShellCommand::new(&bin)
+    let child = Command::new(&bin)
         .args(["serve", "--port", "9889"])
         .spawn()
-        .map_err(|e| format!("Failed to start CAO: {}", e))?;
+        .map_err(|e| format!("Failed to start CAO `{}`: {}", bin, e))?;
 
     let mut guard = state.child.lock().map_err(|e| e.to_string())?;
     *guard = Some(child);
+    drop(guard);
+
+    // Watch for unexpected exit so the handle is reaped automatically.
+    watch_child(state.inner().clone());
 
     Ok(CAOProcessResult {
         success: true,
@@ -86,30 +155,14 @@ async fn cao_start(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResu
 }
 
 #[tauri::command]
-async fn cao_status(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessStatus, String> {
-    let guard = state.child.lock().map_err(|e| e.to_string())?;
-    Ok(CAOProcessStatus {
-        managed: guard.is_some(),
-    })
-}
-
-#[tauri::command]
-async fn cao_stop(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResult, String> {
-    let child = {
-        let mut guard = state.child.lock().map_err(|e| e.to_string())?;
-        guard.take()
-    };
-
-    match child {
-        Some(child) => {
-            let _ = child.kill();
-            Ok(CAOProcessResult {
-                success: true,
-                action: "stop".to_string(),
-                message: "CAO stopped".to_string(),
-            })
-        }
-        None => Ok(CAOProcessResult {
+async fn cao_stop(state: tauri::State<'_, Arc<CAOProcess>>) -> Result<CAOProcessResult, String> {
+    match state.kill_managed()? {
+        true => Ok(CAOProcessResult {
+            success: true,
+            action: "stop".to_string(),
+            message: "CAO stopped".to_string(),
+        }),
+        false => Ok(CAOProcessResult {
             success: true,
             action: "stop".to_string(),
             message: "CAO was not started by this app".to_string(),
@@ -117,12 +170,31 @@ async fn cao_stop(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResul
     }
 }
 
+#[tauri::command]
+async fn cao_status(state: tauri::State<'_, Arc<CAOProcess>>) -> Result<CAOProcessStatus, String> {
+    let guard = state.child.lock().map_err(|e| e.to_string())?;
+    Ok(CAOProcessStatus {
+        managed: guard.is_some(),
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(CAOProcess::new())
+        .manage(Arc::new(CAOProcess::new()))
         .invoke_handler(tauri::generate_handler![greet, cao_start, cao_stop, cao_status])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                // Kill the CAO process we spawned so it is not orphaned when
+                // the app closes. Externally-started CAO is left untouched.
+                if let Some(process) = app.try_state::<Arc<CAOProcess>>() {
+                    if let Err(e) = process.kill_managed() {
+                        eprintln!("Failed to stop managed CAO on exit: {}", e);
+                    }
+                }
+            }
+        });
 }

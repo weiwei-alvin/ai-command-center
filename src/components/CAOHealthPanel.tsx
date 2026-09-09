@@ -7,10 +7,7 @@ import type { CAOHealth, CAOProcessAction } from '../types';
 interface CAOHealthPanelProps {
   health: CAOHealth;
   onHealthChange: (health: CAOHealth) => void;
-  refreshIntervalMs?: number;
 }
-
-const DEFAULT_REFRESH_INTERVAL_MS = 10000;
 
 /**
  * Dashboard panel showing CAO connection status, version, component health,
@@ -19,7 +16,6 @@ const DEFAULT_REFRESH_INTERVAL_MS = 10000;
 export function CAOHealthPanel({
   health,
   onHealthChange,
-  refreshIntervalMs = DEFAULT_REFRESH_INTERVAL_MS,
 }: CAOHealthPanelProps) {
   const [busyAction, setBusyAction] = useState<CAOProcessAction | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -52,16 +48,11 @@ export function CAOHealthPanel({
     }
   }, []);
 
-  // Refresh app-managed process state on mount and after lifecycle actions.
+  // Refresh app-managed process state on mount. Health polling is owned by
+  // App.tsx (single poller); this panel only re-checks after user actions.
   useEffect(() => {
     refreshManaged();
   }, [refreshManaged]);
-
-  // Periodic health refresh while the panel is visible.
-  useEffect(() => {
-    const interval = setInterval(refreshHealth, refreshIntervalMs);
-    return () => clearInterval(interval);
-  }, [refreshHealth, refreshIntervalMs]);
 
   const handleAction = async (action: CAOProcessAction) => {
     setBusyAction(action);
