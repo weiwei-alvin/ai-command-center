@@ -16,6 +16,7 @@ function App() {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
+  const [toast, setToast] = useState<string | null>(null);
 
   // Adapter is created lazily; re-created only when CAO config changes.
   const adapter = getCAOAdapter(settings.caoConfig);
@@ -59,6 +60,11 @@ function App() {
       workerProfiles: ['developer', 'reviewer'],
     };
 
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 4000);
+  }, []);
+
   const handleLaunch = async (formData: { projectFolder: string; team: string; task: string }) => {
     setLaunching(true);
     setLaunchError(null);
@@ -69,19 +75,34 @@ function App() {
     const result = await adapter.createSession(formData, team);
 
     if (result.success && result.sessionName) {
-      // Wait a bit for session to be created, then load it
-      setTimeout(async () => {
-        const session = await adapter.getSession(result.sessionName!);
-        if (session) {
-          session.team = team.name;
-          session.task = formData.task;
-          if (settings.preferences.openSessionAfterLaunch) {
-            setActiveSession(session);
-            setView('session');
+      const sessionName = result.sessionName;
+      // Wait a bit for session to be created, then load it.
+      // Note: cleanup (loadSessions + setLaunching(false)) runs in finally,
+      // so even a null fetch or thrown error can never strand the UI.
+      window.setTimeout(async () => {
+        let opened = false;
+        try {
+          const session = await adapter.getSession(sessionName);
+          if (session) {
+            session.team = team.name;
+            session.task = formData.task;
+            if (settings.preferences.openSessionAfterLaunch) {
+              setActiveSession(session);
+              setView('session');
+              opened = true;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch launched session:', error);
+        } finally {
+          // Always refresh the list and clear the launching state,
+          // regardless of whether the session fetch succeeded.
+          loadSessions();
+          setLaunching(false);
+          if (!opened) {
+            showToast(`Task launched: session "${sessionName}" was created successfully.`);
           }
         }
-        loadSessions();
-        setLaunching(false);
       }, 2000);
     } else {
       setLaunchError(result.error || 'Failed to launch session');
@@ -164,6 +185,12 @@ function App() {
           />
         )}
       </main>
+
+      {toast && (
+        <div className="toast-notification" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
