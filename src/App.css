@@ -69,6 +69,111 @@ body {
 .connection-dot.failed { background-color: #f44747; }
 .connection-dot.unknown { background-color: #808080; }
 
+.connection-details {
+  font-size: 0.75rem;
+  color: #808080;
+}
+
+/* CAO Health Panel */
+.cao-health-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cao-health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cao-health-header h2 {
+  margin: 0;
+}
+
+.cao-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.cao-health-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.cao-health-label {
+  font-size: 0.75rem;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cao-health-value {
+  font-size: 0.9375rem;
+  color: #d4d4d4;
+}
+
+.cao-health-components {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cao-component-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cao-component-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background-color: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+
+.cao-component-name {
+  color: #ffffff;
+}
+
+.cao-component-status {
+  color: #808080;
+}
+
+.cao-health-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #808080;
+  font-style: italic;
+}
+
+.cao-health-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.cao-action-message {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #4ec9b0;
+}
+
+.cao-action-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #f48771;
+}
+
 /* Dashboard */
 .dashboard {
   flex: 1;

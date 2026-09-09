@@ -1,9 +1,12 @@
 import { LaunchForm } from './LaunchForm';
-import type { SessionSummary } from '../types';
+import { CAOHealthPanel } from './CAOHealthPanel';
+import type { CAOHealth, SessionSummary } from '../types';
 
 interface DashboardProps {
   sessions: SessionSummary[];
   onSessionSelect: (session: SessionSummary) => void;
+  caoHealth: CAOHealth;
+  onCAOHealthChange: (health: CAOHealth) => void;
   launchFormProps: {
     onLaunch: (data: { projectFolder: string; team: string; task: string }) => void;
     launching: boolean;
@@ -38,10 +41,14 @@ function getStatusLabel(state: string): string {
 export function Dashboard({
   sessions,
   onSessionSelect,
+  caoHealth,
+  onCAOHealthChange,
   launchFormProps,
 }: DashboardProps) {
   return (
     <div className="dashboard">
+      <CAOHealthPanel health={caoHealth} onHealthChange={onCAOHealthChange} />
+
       <div className="dashboard-section">
         <h2>Launch Task</h2>
         <LaunchForm {...launchFormProps} />

@@ -19,6 +19,8 @@ import type {
   Team,
   TimelineEvent,
   CAOConfig,
+  CAOHealth,
+  CAOComponentHealth,
 } from '../../types';
 
 // Raw CAO response types (internal to adapter)
@@ -55,7 +57,8 @@ interface CAOHealthResponse {
   status: string;
   service: string;
   terminal_backend: string;
-  components: Record<string, string>;
+  version?: string;
+  components?: Record<string, string>;
 }
 
 interface CAOAgentProfile {
@@ -86,19 +89,52 @@ class CAOAdapter {
   }
 
   /**
-   * Check CAO server health
+   * Check CAO server health and return a normalized CAOHealth snapshot.
    */
-  async checkHealth(): Promise<{ healthy: boolean; details?: CAOHealthResponse }> {
+  async checkHealth(): Promise<CAOHealth> {
+    const startedAt = Date.now();
     try {
       const response = await fetch(`${this.config.baseUrl}/health`);
+      const latencyMs = Date.now() - startedAt;
       if (!response.ok) {
-        return { healthy: false };
+        return this.unhealthySnapshot();
       }
       const data = await response.json() as CAOHealthResponse;
-      return { healthy: data.status === 'ok', details: data };
+      const healthy = data.status === 'ok';
+      return {
+        healthy,
+        status: healthy ? 'connected' : 'failed',
+        version: data.version ?? null,
+        service: data.service ?? null,
+        terminalBackend: data.terminal_backend ?? null,
+        components: this.mapComponents(data.components ?? {}),
+        latencyMs,
+        checkedAt: new Date().toISOString(),
+      };
     } catch {
-      return { healthy: false };
+      return this.unhealthySnapshot();
     }
+  }
+
+  private unhealthySnapshot(): CAOHealth {
+    return {
+      healthy: false,
+      status: 'disconnected',
+      version: null,
+      service: null,
+      terminalBackend: null,
+      components: [],
+      latencyMs: null,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  private mapComponents(components: Record<string, string>): CAOComponentHealth[] {
+    return Object.entries(components).map(([name, status]) => ({
+      name,
+      status: this.mapCAOStatus(status),
+      raw: status,
+    }));
   }
 
   /**
