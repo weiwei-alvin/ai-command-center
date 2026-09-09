@@ -85,6 +85,11 @@ class CAOAdapter {
     this.config = { ...DEFAULT_CAO_CONFIG, ...config };
   }
 
+  /** Get the active connection config (used for stale-instance detection). */
+  getConfig(): CAOConfig {
+    return { ...this.config };
+  }
+
   /**
    * Check CAO server health
    */
@@ -432,6 +437,26 @@ let adapterInstance: CAOAdapter | null = null;
 
 export function getCAOAdapter(config?: Partial<CAOConfig>): CAOAdapter {
   if (!adapterInstance) {
+    adapterInstance = new CAOAdapter(config);
+  }
+  return adapterInstance;
+}
+
+/**
+ * Deterministically return an adapter for the given config.
+ *
+ * Unlike getCAOAdapter(), this recreates the singleton when the requested
+ * baseUrl/wsUrl differ from the cached instance, so the returned adapter
+ * always targets the requested URLs — even mid-render after a config change.
+ * The stale instance's event stream is cleaned up on replacement.
+ */
+export function getOrCreateCAOAdapter(config: CAOConfig): CAOAdapter {
+  if (
+    !adapterInstance ||
+    adapterInstance.getConfig().baseUrl !== config.baseUrl ||
+    adapterInstance.getConfig().wsUrl !== config.wsUrl
+  ) {
+    adapterInstance?.stopEventStream();
     adapterInstance = new CAOAdapter(config);
   }
   return adapterInstance;

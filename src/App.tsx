@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SessionView } from './components/SessionView';
 import { Dashboard } from './components/Dashboard';
 import { SettingsPage } from './components/SettingsPage';
 import { ConnectionIndicator } from './components/ConnectionIndicator';
-import { getCAOAdapter, resetCAOAdapter } from './lib/cao/adapter';
+import { getOrCreateCAOAdapter, resetCAOAdapter } from './lib/cao/adapter';
 import { loadSettings } from './lib/settings';
 import type { SessionSummary, Team, ConnectionState, Settings } from './types';
 import './App.css';
@@ -18,18 +18,11 @@ function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [toast, setToast] = useState<string | null>(null);
 
-  // Adapter is created lazily; re-created only when CAO config changes.
-  const adapter = getCAOAdapter(settings.caoConfig);
-  const configKey = `${settings.caoConfig.baseUrl}|${settings.caoConfig.wsUrl}`;
-  const lastConfigKey = useRef(configKey);
-
-  // Reconnect adapter when CAO connection config changes.
-  useEffect(() => {
-    if (lastConfigKey.current !== configKey) {
-      lastConfigKey.current = configKey;
-      resetCAOAdapter();
-    }
-  }, [configKey]);
+  // Adapter is derived deterministically from the current CAO config:
+  // getOrCreateCAOAdapter recreates the singleton (cleaning up the old event
+  // stream) whenever baseUrl/wsUrl change, so the adapter returned during
+  // this render always targets the current URLs — no effect-ordering gaps.
+  const adapter = getOrCreateCAOAdapter(settings.caoConfig);
 
   // Check CAO connection on mount and periodically (interval from preferences).
   useEffect(() => {
