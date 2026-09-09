@@ -27,6 +27,14 @@ struct CAOProcessResult {
     message: String,
 }
 
+/// Status of the CAO process from the app's perspective.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CAOProcessStatus {
+    /// Whether this app spawned and is tracking the CAO process.
+    managed: bool,
+}
+
 /// Shared handle to the running CAO process, if any.
 struct CAOProcess {
     child: Mutex<Option<CommandChild>>,
@@ -78,6 +86,14 @@ async fn cao_start(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResu
 }
 
 #[tauri::command]
+async fn cao_status(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessStatus, String> {
+    let guard = state.child.lock().map_err(|e| e.to_string())?;
+    Ok(CAOProcessStatus {
+        managed: guard.is_some(),
+    })
+}
+
+#[tauri::command]
 async fn cao_stop(state: tauri::State<'_, CAOProcess>) -> Result<CAOProcessResult, String> {
     let child = {
         let mut guard = state.child.lock().map_err(|e| e.to_string())?;
@@ -106,7 +122,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(CAOProcess::new())
-        .invoke_handler(tauri::generate_handler![greet, cao_start, cao_stop])
+        .invoke_handler(tauri::generate_handler![greet, cao_start, cao_stop, cao_status])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

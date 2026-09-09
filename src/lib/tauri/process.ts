@@ -11,6 +11,13 @@ interface TauriInvoke {
   (cmd: string, args?: Record<string, unknown>): Promise<unknown>;
 }
 
+/**
+ * Whether the app's Tauri backend spawned and is tracking the CAO process.
+ */
+export interface CAOProcessStatus {
+  managed: boolean;
+}
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: { invoke: TauriInvoke };
@@ -55,5 +62,22 @@ export async function controlCAOProcess(action: CAOProcessAction): Promise<CAOPr
       action,
       message: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+/**
+ * Ask the Tauri backend whether it spawned and is tracking the CAO process.
+ * Returns `null` when not running under Tauri (status unknown).
+ */
+export async function getCAOProcessStatus(): Promise<CAOProcessStatus | null> {
+  const invoke = getInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  try {
+    return await invoke('cao_status') as CAOProcessStatus;
+  } catch {
+    return null;
   }
 }

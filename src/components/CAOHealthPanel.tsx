@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionIndicator } from './ConnectionIndicator';
-import { controlCAOProcess, isTauri } from '../lib/tauri/process';
+import { controlCAOProcess, getCAOProcessStatus, isTauri } from '../lib/tauri/process';
 import { getCAOAdapter } from '../lib/cao/adapter';
 import type { CAOHealth, CAOProcessAction } from '../types';
 
@@ -24,6 +24,10 @@ export function CAOHealthPanel({
   const [busyAction, setBusyAction] = useState<CAOProcessAction | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Whether this app spawned and is tracking the CAO process (backend-reported).
+  // Distinguished from reachability: an externally-started CAO is reachable
+  // but not managed by this app.
+  const [managed, setManaged] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -40,6 +44,18 @@ export function CAOHealthPanel({
       onHealthChange(snapshot);
     }
   }, [onHealthChange]);
+
+  const refreshManaged = useCallback(async () => {
+    const status = await getCAOProcessStatus();
+    if (mountedRef.current && status) {
+      setManaged(status.managed);
+    }
+  }, []);
+
+  // Refresh app-managed process state on mount and after lifecycle actions.
+  useEffect(() => {
+    refreshManaged();
+  }, [refreshManaged]);
 
   // Periodic health refresh while the panel is visible.
   useEffect(() => {
@@ -61,7 +77,12 @@ export function CAOHealthPanel({
       setActionError(result.message);
     }
 
-    // Re-check health shortly after the lifecycle action.
+    // Update app-managed state immediately, then re-check health shortly
+    // after the lifecycle action.
+    if (result.success) {
+      setManaged(action === 'start');
+    }
+    refreshManaged();
     setTimeout(() => {
       refreshHealth();
     }, action === 'start' ? 1500 : 500);
@@ -69,7 +90,8 @@ export function CAOHealthPanel({
     setBusyAction(null);
   };
 
-  const running = health.healthy;
+  // Reachability of the CAO server (regardless of who started it).
+  const reachable = health.healthy;
 
   return (
     <div className="dashboard-section cao-health-panel">
@@ -81,7 +103,9 @@ export function CAOHealthPanel({
       <div className="cao-health-grid">
         <div className="cao-health-field">
           <span className="cao-health-label">Status</span>
-          <span className="cao-health-value">{running ? 'Healthy' : 'Unreachable'}</span>
+          <span className="cao-health-value">
+            {reachable ? (managed ? 'Healthy (app-managed)' : 'Healthy (external)') : 'Unreachable'}
+          </span>
         </div>
         <div className="cao-health-field">
           <span className="cao-health-label">Version</span>
@@ -118,23 +142,30 @@ export function CAOHealthPanel({
         </div>
       )}
 
-      {!running && health.components.length === 0 && (
+      {!reachable && health.components.length === 0 && (
         <p className="cao-health-hint">
           CAO is not reachable at the configured URL. Use the controls below to start it.
+        </p>
+      )}
+
+      {reachable && !managed && (
+        <p className="cao-health-hint">
+          CAO is reachable but was not started by this app, so it cannot be stopped from here.
+          Starting CAO will adopt it under this app's management.
         </p>
       )}
 
       <div className="cao-health-actions">
         <button
           className="btn btn-primary"
-          disabled={busyAction !== null || running}
+          disabled={busyAction !== null || managed}
           onClick={() => handleAction('start')}
         >
-          {busyAction === 'start' ? 'Starting…' : 'Start CAO'}
+          {busyAction === 'start' ? 'Starting…' : managed ? 'CAO Running' : 'Start CAO'}
         </button>
         <button
           className="btn btn-danger"
-          disabled={busyAction !== null || !running}
+          disabled={busyAction !== null || !managed}
           onClick={() => handleAction('stop')}
         >
           {busyAction === 'stop' ? 'Stopping…' : 'Stop CAO'}
