@@ -66,6 +66,17 @@ impl CAOProcess {
     }
 }
 
+/// CAO server port. Keep in sync with DEFAULT_CAO_CONFIG in
+/// src/lib/cao/adapter.ts (and its VITE_CAO_PORT override) — both use
+/// the CAO_PORT env var with 9889 as the shared default, so the spawned
+/// server and the frontend health probe stay synchronized.
+fn cao_port() -> String {
+    std::env::var("CAO_PORT")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "9889".to_string())
+}
+
 /// Resolve the CAO executable to spawn.
 ///
 /// The binary is expected to be the CAO CLI on PATH, or an explicit path
@@ -83,6 +94,11 @@ fn cao_executable() -> String {
 /// Background thread that watches the managed child. When the process exits
 /// on its own (crash, external kill), the slot is cleared so the app can
 /// start/manage CAO again instead of holding a stale handle forever.
+///
+/// Intentionally one-shot per spawn: each successful `cao_start` spawns a
+/// fresh watcher thread tied to that child. The thread exits as soon as the
+/// slot is cleared (either by the watcher itself, by `cao_stop`, or on app
+/// exit), so there are never more watcher threads than live spawns.
 fn watch_child(process: Arc<CAOProcess>) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(1000));
@@ -136,7 +152,7 @@ async fn cao_start(
     let bin = cao_executable();
 
     let child = Command::new(&bin)
-        .args(["serve", "--port", "9889"])
+        .args(["serve", "--port", &cao_port()])
         .spawn()
         .map_err(|e| format!("Failed to start CAO `{}`: {}", bin, e))?;
 

@@ -72,10 +72,23 @@ interface CAOProvider {
   installed: boolean;
 }
 
+/**
+ * CAO server port. Keep in sync with the default port in
+ * src-tauri/src/main.rs (`cao_start` spawn args) — both read the
+ * CAO_PORT env var with 9889 as the shared default, so spawn and
+ * probe stay synchronized.
+ */
+const envPort = (import.meta as unknown as { env?: Record<string, string | undefined> })
+  .env?.VITE_CAO_PORT;
+const CAO_PORT = envPort && envPort.trim() !== '' ? envPort : '9889';
+
 const DEFAULT_CAO_CONFIG: CAOConfig = {
-  baseUrl: 'http://localhost:9889',
-  wsUrl: 'ws://localhost:9889',
+  baseUrl: `http://localhost:${CAO_PORT}`,
+  wsUrl: `ws://localhost:${CAO_PORT}`,
 };
+
+/** Timeout for health probes; aborts resolve as disconnected. */
+const HEALTH_TIMEOUT_MS = 5000;
 
 class CAOAdapter {
   private config: CAOConfig;
@@ -90,11 +103,15 @@ class CAOAdapter {
 
   /**
    * Check CAO server health and return a normalized CAOHealth snapshot.
+   * Times out after HEALTH_TIMEOUT_MS so a hung connection resolves as
+   * disconnected instead of blocking the poller indefinitely.
    */
   async checkHealth(): Promise<CAOHealth> {
     const startedAt = Date.now();
     try {
-      const response = await fetch(`${this.config.baseUrl}/health`);
+      const response = await fetch(`${this.config.baseUrl}/health`, {
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+      });
       const latencyMs = Date.now() - startedAt;
       if (!response.ok) {
         return this.unhealthySnapshot();
@@ -132,9 +149,29 @@ class CAOAdapter {
   private mapComponents(components: Record<string, string>): CAOComponentHealth[] {
     return Object.entries(components).map(([name, status]) => ({
       name,
-      status: this.mapCAOStatus(status),
+      status: this.mapComponentStatus(status),
       raw: status,
     }));
+  }
+
+  /**
+   * Map a raw CAO component health string into the connection-state
+   * vocabulary used by the UI (connected / connecting / disconnected /
+   * unknown). Component health strings ("ok", "degraded", "failure", ...)
+   * are distinct from session statuses, so they must not reuse mapCAOStatus.
+   */
+  private mapComponentStatus(status: string): ConnectionState {
+    const normalized = status.trim().toLowerCase();
+    if (['ok', 'healthy', 'running', 'up', 'active', 'ready'].includes(normalized)) {
+      return 'connected';
+    }
+    if (['degraded', 'starting', 'warning', 'partial', 'recovering'].includes(normalized)) {
+      return 'connecting';
+    }
+    if (['failure', 'failed', 'down', 'error', 'crashed', 'unhealthy', 'stopped'].includes(normalized)) {
+      return 'disconnected';
+    }
+    return 'unknown';
   }
 
   /**

@@ -88,7 +88,7 @@ export function CAOHealthPanel({
     <div className="dashboard-section cao-health-panel">
       <div className="cao-health-header">
         <h2>CAO Health</h2>
-        <ConnectionIndicator state={health.status} showVersion={false} />
+        <ConnectionIndicator state={health.status} showDetails={false} />
       </div>
 
       <div className="cao-health-grid">

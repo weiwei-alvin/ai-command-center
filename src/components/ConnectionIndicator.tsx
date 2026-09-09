@@ -6,8 +6,12 @@ interface ConnectionIndicatorProps {
   version?: string | null;
   /** Optional latency in milliseconds to display next to the status. */
   latencyMs?: number | null;
-  /** Whether to render the version/latency details. Defaults to true. */
-  showVersion?: boolean;
+  /**
+   * Whether to render the version/latency detail fragments.
+   * Defaults to true. Set to false for compact usages (e.g. panel headers)
+   * that only want the dot and label.
+   */
+  showDetails?: boolean;
 }
 
 const stateLabels: Record<ConnectionState, string> = {
@@ -26,13 +30,13 @@ export function ConnectionIndicator({
   state,
   version = null,
   latencyMs = null,
-  showVersion = true,
+  showDetails = true,
 }: ConnectionIndicatorProps) {
   const details: string[] = [];
-  if (showVersion && version) {
+  if (showDetails && version) {
     details.push(`v${version.replace(/^v/, '')}`);
   }
-  if (latencyMs !== null && latencyMs >= 0) {
+  if (showDetails && latencyMs !== null && latencyMs >= 0) {
     details.push(`${latencyMs} ms`);
   }
 
