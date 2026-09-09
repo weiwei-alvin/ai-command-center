@@ -74,9 +74,11 @@ function App() {
       // so even a null fetch or thrown error can never strand the UI.
       window.setTimeout(async () => {
         let opened = false;
+        let verified = false;
         try {
           const session = await adapter.getSession(sessionName);
           if (session) {
+            verified = true;
             session.team = team.name;
             session.task = formData.task;
             if (settings.preferences.openSessionAfterLaunch) {
@@ -93,7 +95,14 @@ function App() {
           loadSessions();
           setLaunching(false);
           if (!opened) {
-            showToast(`Task launched: session "${sessionName}" was created successfully.`);
+            // Distinguish created (createSession succeeded) vs verified
+            // (post-launch fetch confirmed the session), so the toast never
+            // claims more than we actually know.
+            showToast(
+              verified
+                ? `Task launched: session "${sessionName}" was created successfully.`
+                : `Task launched: session "${sessionName}" was created, but could not be verified yet. It should appear in the session list shortly.`
+            );
           }
         }
       }, 2000);

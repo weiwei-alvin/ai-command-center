@@ -80,6 +80,8 @@ class CAOAdapter {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
 
   constructor(config: Partial<CAOConfig> = {}) {
     this.config = { ...DEFAULT_CAO_CONFIG, ...config };
@@ -275,6 +277,8 @@ class CAOAdapter {
     if (this.eventSource) {
       this.eventSource.close();
     }
+    // (Re)starting the stream revives the adapter if it was previously stopped.
+    this.stopped = false;
 
     // Use AG-UI stream as specified in contract
     this.eventSource = new EventSource(`${this.config.baseUrl}/agui/v1/stream`);
@@ -302,9 +306,18 @@ class CAOAdapter {
   }
 
   /**
-   * Stop event stream
+   * Stop event stream and cancel any pending reconnect timer.
+   *
+   * Without cancelling the timer, a queued handleReconnect callback could fire
+   * after this adapter was replaced (e.g. after a config change) and re-open
+   * a stream against the old URL with no remaining reference to stop it.
    */
   stopEventStream(): void {
+    this.stopped = true;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -425,8 +438,12 @@ class CAOAdapter {
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
-    setTimeout(() => {
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      // If the adapter was stopped (stream closed / adapter replaced) while
+      // this timer was pending, do not resurrect the stream.
+      if (this.stopped) return;
       this.startEventStream(onEvent, onError);
     }, delay);
   }

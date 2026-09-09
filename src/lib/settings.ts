@@ -154,6 +154,8 @@ export function makeTeamId(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
     .substring(0, 40);
-  const suffix = Date.now().toString(36);
+  // Time + random suffix so two ids generated in the same millisecond
+  // (e.g. rapid consecutive saves) still differ.
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   return `${base || 'team'}-${suffix}`;
 }
